@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mara-small · in-browser</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    background: #0b0e14; color: #e6e9ef; min-height: 100vh;
+    display: flex; justify-content: center; padding: 40px 16px;
+  }
+  .wrap { width: 100%; max-width: 760px; }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  h1 span { color: #7aa2f7; }
+  p.sub { color: #8b93a7; font-size: 14px; margin: 6px 0 28px; }
+  label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #8b93a7; margin-bottom: 6px; }
+  textarea {
+    width: 100%; min-height: 72px; resize: vertical;
+    background: #131722; border: 1px solid #232a3b; border-radius: 10px;
+    color: #e6e9ef; padding: 12px 14px; font-size: 15px; line-height: 1.5;
+  }
+  textarea:focus { outline: none; border-color: #7aa2f7; }
+  .row { display: flex; gap: 16px; margin: 16px 0; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  input[type=range] { width: 100%; accent-color: #7aa2f7; }
+  .val { color: #7aa2f7; font-size: 13px; }
+  button {
+    background: #7aa2f7; color: #0b0e14; border: none; border-radius: 10px;
+    padding: 12px 28px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #92b4f8; }
+  button:disabled { opacity: 0.45; cursor: wait; }
+  .status { font-size: 13px; color: #8b93a7; margin-top: 10px; }
+  .status b { color: #9ece6a; }
+  .out {
+    margin-top: 24px; background: #131722; border: 1px solid #232a3b;
+    border-radius: 10px; padding: 18px 20px; white-space: pre-wrap;
+    font-size: 15px; line-height: 1.65; min-height: 120px; color: #cdd3e0;
+  }
+  .out:empty::before { content: "Your story appears here…"; color: #4a5265; }
+  footer { margin-top: 36px; font-size: 12px; color: #4a5265; }
+  footer a { color: #7aa2f7; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>mara<span>-small</span></h1>
+  <p class="sub">24.6M parameter GPT trained from scratch on TinyStories. Runs entirely in your browser — no server, no GPU farm.</p>
+
+  <label for="prompt">Story starter</label>
+  <textarea id="prompt">Once upon a time, there was a little girl named Divya.</textarea>
+
+  <div class="row">
+    <div>
+      <label>Max new tokens</label>
+      <input type="range" id="maxtok" min="50" max="400" value="200" step="10">
+      <span class="val" id="maxtokv">200</span>
+    </div>
+    <div>
+      <label>Temperature</label>
+      <input type="range" id="temp" min="0.4" max="1.2" value="0.8" step="0.05">
+      <span class="val" id="tempv">0.80</span>
+    </div>
+  </div>
+
+  <button id="go">Generate story</button>
+  <div class="status" id="status">loading model…</div>
+  <div class="out" id="out"></div>
+
+  <footer>base model: <a href="https://huggingface.co/jaswanthsanjay88/mara-small">jaswanthsanjay88/mara-small</a> · inference via onnxruntime-web (WebGPU → WASM fallback)</footer>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
