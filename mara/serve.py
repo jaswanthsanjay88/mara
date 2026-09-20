@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import time
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from typing import Any, Dict
 import urllib.parse
 
@@ -351,6 +351,7 @@ class MaraHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Connection", "close")
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -442,7 +443,7 @@ class MaraHandler(SimpleHTTPRequestHandler):
 
 def serve(port: int = 8000):
     load_model()
-    server = HTTPServer(("0.0.0.0", port), MaraHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), MaraHandler)
     print(f"\n========================================================")
     print(f" Mara AFM Neural Server Live on http://localhost:{port}")
     print(f" Endpoints: ")

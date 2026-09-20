@@ -1,0 +1,15 @@
+{
+  "vocab_size": 1049,
+  "d_model": 128,
+  "n_layers": 2,
+  "n_heads": 4,
+  "n_kv_heads": 2,
+  "max_seq_len": 1024,
+  "dropout": 0.0,
+  "ffn_every": 1,
+  "ffn_hidden_mult": 3.0,
+  "ffn_bottleneck": null,
+  "n_loops": 1,
+  "qk_norm": false,
+  "pointer_dim": 256
+}
