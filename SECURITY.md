@@ -16,7 +16,7 @@ Security is paramount when connecting neural models to physical hardware, GPIO p
 If you discover a security vulnerability in Mara (such as an unauthenticated command execution risk, sandbox escape, or deserialization vulnerability):
 
 1. **Do not open a public GitHub issue.**
-2. Email the maintainer directly at `jaswanthsanjay88@gmail.com` with the subject line `[SECURITY] Mara Vulnerability Report`.
+2. Submit a private advisory via GitHub Security Advisories at [https://github.com/jaswanthsanjay88/mara/security/advisories](https://github.com/jaswanthsanjay88/mara/security/advisories).
 3. Include:
    - A description of the vulnerability and potential impact.
    - Minimal proof-of-concept code or reproduction steps.

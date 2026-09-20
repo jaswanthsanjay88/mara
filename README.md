@@ -327,7 +327,7 @@ Mara is released under the [Apache 2.0 License](LICENSE).
 ```bibtex
 @misc{mara2026afm,
   title={Mara: Automation Foundation Model for Edge Intelligence and Hardware Tool Calling},
-  author={Jaswanth Sanjay},
+  author={Mara Contributors},
   year={2026},
   publisher={GitHub},
   howpublished={\url{https://github.com/jaswanthsanjay88/mara}}

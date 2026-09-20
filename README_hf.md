@@ -253,7 +253,7 @@ This project and model weights are released under the [Apache 2.0 License](https
 ```bibtex
 @misc{mara2026afm,
   title={Mara: Automation Foundation Model for Edge Intelligence and Hardware Tool Calling},
-  author={Jaswanth Sanjay},
+  author={Mara Contributors},
   year={2026},
   publisher={Hugging Face},
   howpublished={\url{https://huggingface.co/jaswanthsanjay88/mara}}
@@ -261,6 +261,5 @@ This project and model weights are released under the [Apache 2.0 License](https
 ```
 
 ### Contact
-- **Maintainer**: Jaswanth Sanjay
-- **Email**: `jaswanthsanjay88@gmail.com`
-- **GitHub**: [https://github.com/jaswanthsanjay88/mara](https://github.com/jaswanthsanjay88/mara)
+- **GitHub Issues**: [https://github.com/jaswanthsanjay88/mara/issues](https://github.com/jaswanthsanjay88/mara/issues)
+- **Hugging Face Discussions**: [https://huggingface.co/jaswanthsanjay88/mara/discussions](https://huggingface.co/jaswanthsanjay88/mara/discussions)
