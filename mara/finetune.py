@@ -1,116 +1,119 @@
-import glob
-import os
+"""
+Fine-tuning script for DecisionMara on smart-home device control and domain records.
+Fine-tunes the native Mara PointerHead and transformer backbone.
+"""
 
+import argparse
+import json
+import os
+import random
+import time
 import torch
-from datasets import load_dataset
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    BitsAndBytesConfig,
-    TrainingArguments,
-    Trainer,
-)
+import torch.nn.functional as F
+
+from .model import Mara, MaraConfig, branch_mask_batch
+from .data import TOKENIZER_PATH
+from .tokenizer import encode_record, load_tokenizer
+from .train import question_loss, evaluate, get_lr
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
-DOMAIN_DIR = os.path.join(ROOT, "data", "domain")
-OUT_DIR = os.path.join(ROOT, "checkpoints", "smollm2_lora")
-MODEL_ID = "HuggingFaceTB/SmolLM2-135M-Instruct"
+CKPT_DIR = os.path.join(ROOT, "checkpoints")
 
 
-def load_domain_dataset():
-    files = glob.glob(os.path.join(DOMAIN_DIR, "*.jsonl"))
-    if not files:
-        raise FileNotFoundError(
-            f"no .jsonl found in {DOMAIN_DIR}. "
-            "add files with lines like: "
-            '{"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}'
-        )
-    ds = load_dataset("json", data_files=files, split="train")
-    ds = ds.train_test_split(test_size=0.05, seed=42)
-    return ds["train"], ds["test"]
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-ckpt", default=os.path.join(CKPT_DIR, "mara_decision_base.pt"))
+    parser.add_argument("--tokenizer", default=TOKENIZER_PATH)
+    parser.add_argument("--data-jsonl", default=os.path.join(ROOT, "data", "decision_records.jsonl"))
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--min-lr", type=float, default=2e-5)
+    parser.add_argument("--accum", type=int, default=4)
+    parser.add_argument("--out", default=os.path.join(CKPT_DIR, "mara_home.pt"))
+    args = parser.parse_args()
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device} | Fine-tuning DecisionMara")
 
-def main(epochs: int = 3):
-    device = "cuda"
-    bnb = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_use_double_quant=True,
-    )
+    if not os.path.exists(args.base_ckpt):
+        print(f"Base checkpoint not found at {args.base_ckpt}. Please run pretraining first: python -m mara.train")
+        return
 
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+    tok = load_tokenizer(args.tokenizer)
+    ckpt = torch.load(args.base_ckpt, map_location=device, weights_only=False)
+    cfg = MaraConfig(**ckpt["config"])
+    model = Mara(cfg).to(device)
+    model.load_state_dict(ckpt["model"])
+    print(f"Loaded base model: {model.num_params():,} parameters, {cfg.n_layers} layers.")
 
-    def format_and_tokenize(example):
-        text = tokenizer.apply_chat_template(example["messages"], tokenize=False)
-        enc = tokenizer(text, truncation=True, max_length=512)
-        return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"]}
+    with open(args.data_jsonl, "r", encoding="utf-8") as f:
+        records = [json.loads(line) for line in f]
+    print(f"Loaded {len(records):,} domain records.")
 
-    def collate(feats):
-        batch = tokenizer.pad(
-            [{"input_ids": f["input_ids"], "attention_mask": f["attention_mask"]} for f in feats],
-            padding=True,
-            return_tensors="pt",
-        )
-        batch["labels"] = batch["input_ids"].clone()
-        return batch
+    split = int(len(records) * 0.9)
+    train_records = records[:split]
+    val_records = records[split:]
 
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        quantization_config=bnb,
-        torch_dtype=torch.bfloat16,
-        device_map=device,
-    )
-    model = prepare_model_for_kbit_training(model)
-    lora = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-    )
-    model = get_peft_model(model, lora)
-    model.print_trainable_parameters()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
+    total_steps = (len(train_records) // args.accum) * args.epochs
+    step = 0
+    t0 = time.time()
+    model.train()
 
-    train_ds, eval_ds = load_domain_dataset()
-    train_ds = train_ds.map(format_and_tokenize, remove_columns=train_ds.column_names)
-    eval_ds = eval_ds.map(format_and_tokenize, remove_columns=eval_ds.column_names)
-    print(f"train examples: {len(train_ds)}, eval: {len(eval_ds)}")
+    for ep in range(args.epochs):
+        random.shuffle(train_records)
+        epoch_loss = 0.0
+        optimizer.zero_grad(set_to_none=True)
 
-    args = TrainingArguments(
-        output_dir=OUT_DIR,
-        num_train_epochs=epochs,
-        per_device_train_batch_size=4,
-        gradient_accumulation_steps=4,
-        per_device_eval_batch_size=4,
-        learning_rate=2e-4,
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.03,
-        bf16=True,
-        logging_steps=10,
-        eval_strategy="steps",
-        eval_steps=100,
-        save_strategy="epoch",
-        report_to=[],
-        optim="paged_adamw_8bit",
-    )
+        for i, rec in enumerate(train_records):
+            lr = get_lr(step, 50, total_steps, args.lr, args.min_lr)
+            for g in optimizer.param_groups:
+                g["lr"] = lr
 
-    trainer = Trainer(
-        model=model,
-        args=args,
-        train_dataset=train_ds,
-        eval_dataset=eval_ds,
-        data_collator=collate,
-    )
-    trainer.train()
-    trainer.save_model(OUT_DIR)
-    print(f"adapter saved to {OUT_DIR}")
+            enc = encode_record(tok, rec)
+            ids = torch.tensor([enc["ids"]], device=device)
+            pos = torch.tensor([enc["pos"]], device=device)
+            mask = branch_mask_batch([enc["seg"]], device=device, dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32)
+
+            hidden, _ = model(ids, position_ids=pos, attn_mask=mask)
+            h = hidden[0]
+
+            loss_rec = torch.tensor(0.0, device=device)
+            for k, q in enumerate(rec["questions"]):
+                d_i = enc["decide_idx"][k]
+                o_ends = enc["opt_idx"][k]
+                logits = model.pointer_head(h[d_i], h[o_ends])
+                loss_q = question_loss(logits, q["label"], q.get("qtype", "choice"))
+                loss_rec = loss_rec + loss_q
+
+            if len(rec["questions"]) > 0:
+                loss_rec = loss_rec / len(rec["questions"])
+
+            (loss_rec / args.accum).backward()
+            epoch_loss += loss_rec.item()
+
+            if (i + 1) % args.accum == 0 or (i + 1) == len(train_records):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                step += 1
+
+                if step % 25 == 0:
+                    dt = time.time() - t0
+                    print(f"Epoch {ep+1}/{args.epochs} | Step {step}/{total_steps} | Loss {loss_rec.item():.4f} | LR {lr:.2e} | {dt:.1f}s")
+                    t0 = time.time()
+
+        val_metrics = evaluate(model, tok, val_records, device=device)
+        print(f"\n--- [Fine-tune Epoch {ep+1}] Val Loss: {val_metrics['val_loss']:.4f} | Acc: {val_metrics['val_acc']:.1%} | Noul: {val_metrics['val_noul_acc']:.1%} | Choice: {val_metrics['val_choice_acc']:.1%} ---\n")
+
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    torch.save({
+        "model": model.state_dict(),
+        "config": vars(cfg),
+        "tokenizer": args.tokenizer,
+    }, args.out)
+    print(f"Fine-tuned model saved to {args.out}")
 
 
 if __name__ == "__main__":
-    import argparse
-    p = argparse.ArgumentParser()
-    p.add_argument("--epochs", type=int, default=3)
-    main(p.parse_args().epochs)
+    main()

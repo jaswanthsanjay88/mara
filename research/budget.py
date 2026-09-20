@@ -1,15 +1,38 @@
+"""
+Analytical parameter and FLOPs budget matcher for Mara variants.
+Matches depth and width in <0.1ms without instantiating PyTorch models.
+"""
+
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from mara.model import Mara, MaraConfig
+from mara.model import MaraConfig
 
 TARGET_PARAMS = 24_648_192
 
 
 def count_params(**cfg_kwargs) -> int:
-    return Mara(MaraConfig(**cfg_kwargs)).num_params()
+    """Computes exact parameter count analytically in O(1) time."""
+    cfg = MaraConfig(**cfg_kwargs)
+    d = cfg.d_model
+    vocab = cfg.vocab_size
+    n_ffn = sum(1 for i in range(cfg.n_layers) if cfg.ffn_every != 0 and i % cfg.ffn_every == 0)
+    if cfg.ffn_bottleneck:
+        hidden = cfg.ffn_bottleneck
+    else:
+        hidden = ((int(d * cfg.ffn_hidden_mult) + 255) // 256) * 256
+    embed = vocab * d
+    head_dim = d // cfg.n_heads
+    kv_dim = cfg.n_kv_heads * head_dim
+    attn_params = d * d + 2 * d * kv_dim + d * d
+    qk_params = (2 * head_dim) if cfg.qk_norm else 0
+    attn_block = d + attn_params + qk_params
+    ffn_block = d + 3 * d * hidden
+    pointer_params = 2 * d * cfg.pointer_dim
+    total = embed + cfg.n_layers * attn_block + n_ffn * ffn_block + d + pointer_params
+    return total
 
 
 def flops_per_token(cfg: MaraConfig) -> int:
@@ -19,11 +42,12 @@ def flops_per_token(cfg: MaraConfig) -> int:
         hidden = cfg.ffn_bottleneck
     else:
         hidden = ((int(d * cfg.ffn_hidden_mult) + 255) // 256) * 256
-    attn = cfg.n_layers * cfg.n_loops * (12 * d * d)
+    head_dim = d // cfg.n_heads
+    kv_dim = cfg.n_kv_heads * head_dim
+    attn = cfg.n_layers * cfg.n_loops * (4 * d * d + 4 * d * kv_dim)
     ffn = n_ffn * cfg.n_loops * (6 * d * hidden)
-    embed_lookup = 0
     lm_head = 2 * d * cfg.vocab_size
-    return attn + ffn + lm_head + embed_lookup
+    return attn + ffn + lm_head
 
 
 def match_depth(base_kwargs: dict, target: int = TARGET_PARAMS, max_depth: int = 64) -> dict:
@@ -34,7 +58,7 @@ def match_depth(base_kwargs: dict, target: int = TARGET_PARAMS, max_depth: int =
         diff = abs(n - target)
         if best is None or diff < best[1]:
             best = (kwargs, diff, n)
-        if n > target * 1.02:
+        if n > target * 1.05:
             break
     kwargs, _, n = best
     print(f"depth {kwargs['n_layers']:2d} -> {n:,} params ({(n-target)/target*100:+.2f}% vs target)")
@@ -47,12 +71,11 @@ def ffn_block_count(kwargs: dict) -> int:
     return sum(1 for i in range(kwargs["n_layers"]) if i % kwargs.get("ffn_every", 1) == 0)
 
 
-def match_width(kwargs: dict) -> dict:
-    """Depth steps are coarser than the ±1% budget window (one attention-only
-    block is ~4% of target), so close the residual with FFN width instead."""
+def match_width(kwargs: dict, target: int = TARGET_PARAMS) -> dict:
+    """Fine-tunes FFN width to minimize residual gap against target."""
     n = count_params(**kwargs)
     n_ffn = ffn_block_count(kwargs)
-    gap = TARGET_PARAMS - n
+    gap = target - n
     if gap == 0 or n_ffn == 0:
         return kwargs
     cfg = MaraConfig(**kwargs)
@@ -63,9 +86,9 @@ def match_width(kwargs: dict) -> dict:
     h_new = max(64, round((h_cur + gap / (3 * cfg.d_model * n_ffn)) / 8) * 8)
     tuned = {**kwargs, "ffn_bottleneck": h_new}
     n2 = count_params(**tuned)
-    if abs(n2 - TARGET_PARAMS) < abs(n - TARGET_PARAMS):
+    if abs(n2 - target) < abs(n - target):
         print(f"       ffn hidden {h_cur} -> {h_new}  "
-              f"({n2:,} params, {(n2 - TARGET_PARAMS) / TARGET_PARAMS * 100:+.3f}% vs target)")
+              f"({n2:,} params, {(n2 - target) / target * 100:+.3f}% vs target)")
         return tuned
     return kwargs
 
