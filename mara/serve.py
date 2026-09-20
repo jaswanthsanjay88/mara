@@ -22,16 +22,18 @@ import torch
 from mara.model import Mara, MaraConfig
 from mara.tokenizer import load_tokenizer, encode_record
 from mara.afm import default_registry
+from mara.planner import ToolPlanner
 
 CKPT_PATH = os.path.join(ROOT_DIR, "checkpoints", "mara_afm.pt")
 TOKENIZER_PATH = os.path.join(ROOT_DIR, "data", "tokenizer.json")
 DEMO_HTML_PATH = os.path.join(ROOT_DIR, "demo.html")
 
-# Global device and neural network model instance
+# Global device, neural network model and tool planner instances
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 TOKENIZER = None
 MODEL = None
 MODEL_CONFIG = None
+PLANNER = None
 
 # Live hardware & home state
 LIVE_STATE = {
@@ -50,7 +52,7 @@ LIVE_STATE = {
 
 
 def load_model():
-    global TOKENIZER, MODEL, MODEL_CONFIG
+    global TOKENIZER, MODEL, MODEL_CONFIG, PLANNER
     print(f"[Mara AFM Server] Loading tokenizer from: {TOKENIZER_PATH}")
     TOKENIZER = load_tokenizer(TOKENIZER_PATH)
 
@@ -60,7 +62,8 @@ def load_model():
     MODEL = Mara(MODEL_CONFIG).to(DEVICE)
     MODEL.load_state_dict(ckpt["model"])
     MODEL.eval()
-    print(f"[Mara AFM Server] Ready! Model params: {MODEL.num_params():,} on {DEVICE}")
+    PLANNER = ToolPlanner(MODEL, TOKENIZER, DEVICE)
+    print(f"[Mara AFM Server] Ready! Model params: {MODEL.num_params():,} on {DEVICE} with ToolPlanner")
 
 
 def parse_arguments_for_tool(tool_name: str, query: str) -> Dict[str, Any]:
@@ -103,7 +106,7 @@ def parse_arguments_for_tool(tool_name: str, query: str) -> Dict[str, Any]:
         pct_match = re.search(r"(\d+)%", q_lower)
         temp_match = re.search(r"(\d+)\s*(?:degrees|deg|°|c)?", q_lower)
 
-        if "off" in q_lower or "switch off" in q_lower:
+        if "off" in q_lower or "switch off" in q_lower or "shut down" in q_lower or "kill" in q_lower:
             args["action"] = "turn_off"
             args["level"] = 0
         elif "dim" in q_lower:
@@ -119,7 +122,7 @@ def parse_arguments_for_tool(tool_name: str, query: str) -> Dict[str, Any]:
             args["action"] = "lock"
         elif "unlock" in q_lower:
             args["action"] = "unlock"
-        elif "close" in q_lower:
+        elif "close" in q_lower or "shut" in q_lower:
             args["action"] = "close"
         elif "open" in q_lower:
             args["action"] = "open"
@@ -228,69 +231,108 @@ def apply_execution_to_state(tool_name: str, args: Dict[str, Any], result: Any):
 
 def run_live_inference(query: str) -> Dict[str, Any]:
     """
-    Executes actual PyTorch model inference on the query:
-    1. Encodes query into fast-path decision record with Mara AFM vocabulary.
-    2. Runs model.forward_decision() using trained PointerHead weights.
-    3. Calculates exact millisecond inference latency.
-    4. Routes to predicted tool and executes Python tool function.
-    5. Returns JSON with live model confidence, full logits distribution, and updated state.
+    Executes actual PyTorch model inference on the query using the AFM Tool Planner:
+    1. Formulates an execution plan (Single-step, Compound multi-tool, or Macro-routine).
+    2. For each step, runs model.forward_decision() using trained PointerHead weights.
+    3. Calculates exact millisecond inference latency per step.
+    4. Routes to predicted tools and executes Python tool functions.
+    5. Returns JSON with live model plan, per-step confidence, and updated state.
     """
-    rec = default_registry.compile_fast_path_record(query)
-    packed = encode_record(TOKENIZER, rec)
+    global PLANNER
+    if PLANNER is None:
+        PLANNER = ToolPlanner(MODEL, TOKENIZER, DEVICE)
 
-    # Real neural model forward pass
-    t0 = time.perf_counter()
-    with torch.no_grad():
-        probs, _ = MODEL.forward_decision(packed, device=DEVICE)
-    inference_ms = round((time.perf_counter() - t0) * 1000, 2)
+    plan_spec = PLANNER.plan_tools(query)
+    sub_queries = plan_spec["sub_queries"]
+    reasons = plan_spec.get("reasons", [f"Step {i+1}" for i in range(len(sub_queries))])
 
-    tool_probs = probs[0]
+    executed_steps = []
+    total_inference_ms = 0.0
     tool_names = list(default_registry.tools.keys()) + ["none"]
-    best_idx = int(tool_probs.argmax().item())
-    chosen_tool = tool_names[best_idx]
-    confidence = round(float(tool_probs[best_idx].item()), 4)
 
-    # Complete probability distribution across all registered tools
-    distribution = {
-        name: round(float(tool_probs[i].item()), 4)
-        for i, name in enumerate(tool_names)
-    }
+    for idx, (sub_q, reason) in enumerate(zip(sub_queries, reasons), start=1):
+        rec = default_registry.compile_fast_path_record(sub_q)
+        packed = encode_record(TOKENIZER, rec)
 
-    if chosen_tool == "none":
-        return {
-            "query": query,
-            "status": "no_tool_required",
-            "tool": None,
-            "confidence": confidence,
-            "inference_latency_ms": inference_ms,
-            "distribution": distribution,
-            "execution": None,
-            "state": LIVE_STATE,
-            "model_info": {
-                "name": "Mara-AFM",
-                "checkpoint": os.path.basename(CKPT_PATH),
-                "parameters": MODEL.num_params(),
-                "layers": MODEL_CONFIG.n_layers,
-                "d_model": MODEL_CONFIG.d_model,
-                "heads": MODEL_CONFIG.n_heads,
-                "device": str(DEVICE),
-            }
+        # Real neural model forward pass
+        t0 = time.perf_counter()
+        with torch.no_grad():
+            probs, _ = MODEL.forward_decision(packed, device=DEVICE)
+        step_ms = round((time.perf_counter() - t0) * 1000, 2)
+        total_inference_ms += step_ms
+
+        tool_probs = probs[0]
+        best_idx = int(tool_probs.argmax().item())
+        chosen_tool = tool_names[best_idx]
+        confidence = round(float(tool_probs[best_idx].item()), 4)
+
+        distribution = {
+            name: round(float(tool_probs[i].item()), 4)
+            for i, name in enumerate(tool_names)
         }
 
-    # Extract arguments and execute real function
-    args = parse_arguments_for_tool(chosen_tool, query)
-    exec_res = default_registry.execute({"name": chosen_tool, "arguments": args})
-    apply_execution_to_state(chosen_tool, args, exec_res)
+        if chosen_tool == "none":
+            executed_steps.append({
+                "step": idx,
+                "sub_query": sub_q,
+                "reason": reason,
+                "tool": None,
+                "confidence": confidence,
+                "inference_latency_ms": step_ms,
+                "status": "no_tool_required",
+                "distribution": distribution,
+                "execution": None,
+            })
+            continue
+
+        args = parse_arguments_for_tool(chosen_tool, sub_q)
+        exec_res = default_registry.execute({"name": chosen_tool, "arguments": args})
+        apply_execution_to_state(chosen_tool, args, exec_res)
+
+        executed_steps.append({
+            "step": idx,
+            "sub_query": sub_q,
+            "reason": reason,
+            "tool": chosen_tool,
+            "confidence": confidence,
+            "inference_latency_ms": step_ms,
+            "arguments": args,
+            "status": "executed",
+            "distribution": distribution,
+            "execution": exec_res,
+        })
+
+    is_multi_step = len(executed_steps) > 1 or plan_spec.get("is_macro", False)
+
+    # If single step, maintain full backwards-compatibility attributes
+    single_step = executed_steps[0] if executed_steps else {}
+    first_tool = single_step.get("tool")
+    first_conf = single_step.get("confidence", 1.0)
+
+    if not is_multi_step and first_tool is None:
+        status_str = "no_tool_required"
+    elif is_multi_step:
+        status_str = "planned_and_executed"
+    else:
+        status_str = "executed"
 
     return {
         "query": query,
-        "status": "executed",
-        "tool": chosen_tool,
-        "confidence": confidence,
-        "inference_latency_ms": inference_ms,
-        "arguments": args,
-        "distribution": distribution,
-        "execution": exec_res,
+        "status": status_str,
+        "is_plan": is_multi_step,
+        "tool": first_tool,
+        "confidence": first_conf,
+        "inference_latency_ms": round(total_inference_ms, 2),
+        "arguments": single_step.get("arguments", {}),
+        "distribution": single_step.get("distribution", {}),
+        "execution": single_step.get("execution"),
+        "plan": {
+            "goal": plan_spec["goal"],
+            "description": plan_spec.get("description", ""),
+            "strategy": plan_spec.get("strategy", "sequential"),
+            "total_steps": len(executed_steps),
+            "steps": executed_steps,
+        },
         "state": LIVE_STATE,
         "model_info": {
             "name": "Mara-AFM",

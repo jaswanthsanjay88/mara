@@ -610,11 +610,12 @@
 
       <!-- Quick prompts -->
       <div class="quick-pills">
-        <span class="quick-pill" data-q="Turn off the kitchen lights">Turn off kitchen lights</span>
-        <span class="quick-pill" data-q="Dim living room to 40%">Dim living room to 40%</span>
-        <span class="quick-pill" data-q="Set thermostat to 22 degrees">Set thermostat to 22°</span>
-        <span class="quick-pill" data-q="Lock the front door and arm alarm">Lock front door & arm alarm</span>
-        <span class="quick-pill" data-q="Turn on bathroom light and close blinds">Bathroom on & close blinds</span>
+        <span class="quick-pill" data-q="turn on kitchen lights">Turn on kitchen lights</span>
+        <span class="quick-pill" data-q="turn off kitchen lights and lock front door">Plan: Lights + Lock</span>
+        <span class="quick-pill" data-q="good night">Plan: Bedtime Routine</span>
+        <span class="quick-pill" data-q="leaving home">Plan: Leave Home</span>
+        <span class="quick-pill" data-q="movie mode">Plan: Movie Mode</span>
+        <span class="quick-pill" data-q="turn on living lights and set gpio pin 14 to HIGH">Plan: Smart-Home + GPIO</span>
       </div>
 
       <!-- Result Output -->
@@ -813,9 +814,25 @@ async function processCommand() {
 
     renderState();
 
-    const toolDesc = data.tool ? `tool: ${data.tool} (${(data.confidence * 100).toFixed(1)}%)` : `no tool required (${(data.confidence * 100).toFixed(1)}%)`;
-    metricsPill.textContent = `Mara AFM · ${data.inference_latency_ms} ms (PyTorch ${data.model_info ? data.model_info.device : 'cpu'}) · ${toolDesc}`;
-    terminalOutput.innerHTML = syntaxHighlight(data);
+    if (data.is_plan) {
+      metricsPill.textContent = `Mara AFM · Plan: ${data.plan.goal} (${data.plan.total_steps} Steps · ${data.inference_latency_ms} ms)`;
+      let trace = `// ⚡ Mara AFM Multi-Step Execution Plan\n`;
+      trace += `// Goal: ${data.plan.goal} (${data.plan.total_steps} steps in ${data.inference_latency_ms}ms)\n`;
+      trace += `// Strategy: ${data.plan.strategy}\n`;
+      trace += `// -------------------------------------------------------------\n`;
+      if (data.plan.steps) {
+        data.plan.steps.forEach(s => {
+          const cPct = (s.confidence * 100).toFixed(1);
+          trace += `// [Step ${s.step}] ${s.tool || 'none'} (${cPct}%) -> "${s.sub_query}" [${s.inference_latency_ms}ms]\n`;
+        });
+      }
+      trace += `\n`;
+      terminalOutput.innerHTML = trace + syntaxHighlight(data);
+    } else {
+      const toolDesc = data.tool ? `tool: ${data.tool} (${(data.confidence * 100).toFixed(1)}%)` : `no tool required (${(data.confidence * 100).toFixed(1)}%)`;
+      metricsPill.textContent = `Mara AFM · ${data.inference_latency_ms} ms (PyTorch ${data.model_info ? data.model_info.device : 'cpu'}) · ${toolDesc}`;
+      terminalOutput.innerHTML = syntaxHighlight(data);
+    }
 
   } catch (err) {
     console.error("Inference Error:", err);
