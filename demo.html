@@ -740,130 +740,90 @@ function syntaxHighlight(json) {
   });
 }
 
-// Mara AFM Engine Simulation (Sub-10ms Function Calling)
-function processCommand() {
+// Live Mara AFM PyTorch Engine Integration
+const API_BASE = "http://localhost:8000";
+
+// Check backend connection
+async function checkBackend() {
+  const statusBadge = document.querySelector(".status-badge");
+  try {
+    const res = await fetch(`${API_BASE}/api/health`);
+    if (res.ok) {
+      const info = await res.json();
+      statusBadge.innerHTML = `<span class="status-dot"></span> Live PyTorch AFM (${info.params ? (info.params/1000).toFixed(0) + 'k' : '692k'} params · ${info.device || 'cpu'})`;
+      statusBadge.style.color = "#9ece6a";
+      statusBadge.style.borderColor = "rgba(158, 206, 106, 0.3)";
+    }
+  } catch (err) {
+    statusBadge.innerHTML = `<span class="status-dot" style="background:#e0af68;box-shadow:0 0 8px #e0af68;"></span> Backend: Run 'python -m mara.serve'`;
+    statusBadge.style.color = "#e0af68";
+    statusBadge.style.borderColor = "rgba(224, 175, 104, 0.3)";
+  }
+}
+checkBackend();
+setInterval(checkBackend, 5000);
+
+// Reset State via Live Backend
+resetBtn.onclick = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/reset`, { method: "POST" });
+    const data = await res.json();
+    if (data.state) {
+      state = { ...data.state };
+    }
+  } catch (e) {
+    state = { ...defaultState };
+  }
+  renderState();
+  metricsPill.textContent = "Mara AFM · Reset";
+  terminalOutput.innerHTML = '<div class="terminal-placeholder">run a request to see the engine output here</div>';
+};
+
+// Real Live Inference against PyTorch AFM
+async function processCommand() {
   const query = queryInput.value.trim();
   if (!query) return;
 
-  const t0 = performance.now();
-  const qLower = query.toLowerCase();
-  const calls = [];
+  runBtn.disabled = true;
+  runBtn.textContent = "Inferring...";
+  metricsPill.textContent = "Mara AFM · Running forward-pass...";
 
-  // Matcher for smart home intents
-  if (qLower.includes("kitchen")) {
-    if (qLower.includes("off") || qLower.includes("switch off")) {
-      state.kitchen_lights = 0;
-      calls.push({ name: "control_device", arguments: { room: "kitchen", device: "light", action: "turn_off", level: 0 } });
-    } else {
-      const match = qLower.match(/(\d+)%/);
-      const lvl = match ? parseInt(match[1]) : 100;
-      state.kitchen_lights = lvl;
-      calls.push({ name: "control_device", arguments: { room: "kitchen", device: "light", action: "dim", level: lvl } });
+  try {
+    const res = await fetch(`${API_BASE}/api/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query })
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    // Update state directly from real backend hardware state
+    if (data.state) {
+      state.kitchen_lights = data.state.kitchen_lights ?? state.kitchen_lights;
+      state.living_lights = data.state.living_lights ?? state.living_lights;
+      state.bedroom_lights = data.state.bedroom_lights ?? state.bedroom_lights;
+      state.bathroom_lights = data.state.bathroom_lights ?? state.bathroom_lights;
+      state.thermostat = data.state.thermostat ?? state.thermostat;
+      state.front_door = data.state.front_door ?? state.front_door;
+      state.back_door = data.state.back_door ?? state.back_door;
+      state.blinds = data.state.blinds ?? state.blinds;
+      state.alarm = data.state.alarm ?? state.alarm;
     }
-  }
 
-  if (qLower.includes("living room") || qLower.includes("living")) {
-    if (qLower.includes("off")) {
-      state.living_lights = 0;
-      calls.push({ name: "control_device", arguments: { room: "living room", device: "light", action: "turn_off", level: 0 } });
-    } else {
-      const match = qLower.match(/(\d+)%/);
-      const lvl = match ? parseInt(match[1]) : (qLower.includes("40") ? 40 : 100);
-      state.living_lights = lvl;
-      calls.push({ name: "control_device", arguments: { room: "living room", device: "light", action: "dim", level: lvl } });
-    }
-  }
+    renderState();
 
-  if (qLower.includes("bedroom")) {
-    if (qLower.includes("off")) {
-      state.bedroom_lights = 0;
-      calls.push({ name: "control_device", arguments: { room: "bedroom", device: "light", action: "turn_off", level: 0 } });
-    } else {
-      const match = qLower.match(/(\d+)%/);
-      const lvl = match ? parseInt(match[1]) : (qLower.includes("30") ? 30 : 80);
-      state.bedroom_lights = lvl;
-      calls.push({ name: "control_device", arguments: { room: "bedroom", device: "light", action: "dim", level: lvl } });
-    }
-  }
+    const toolDesc = data.tool ? `tool: ${data.tool} (${(data.confidence * 100).toFixed(1)}%)` : `no tool required (${(data.confidence * 100).toFixed(1)}%)`;
+    metricsPill.textContent = `Mara AFM · ${data.inference_latency_ms} ms (PyTorch ${data.model_info ? data.model_info.device : 'cpu'}) · ${toolDesc}`;
+    terminalOutput.innerHTML = syntaxHighlight(data);
 
-  if (qLower.includes("bathroom")) {
-    if (qLower.includes("off")) {
-      state.bathroom_lights = 0;
-      calls.push({ name: "control_device", arguments: { room: "bathroom", device: "light", action: "turn_off", level: 0 } });
-    } else {
-      state.bathroom_lights = 100;
-      calls.push({ name: "control_device", arguments: { room: "bathroom", device: "light", action: "turn_on", level: 100 } });
-    }
-  }
-
-  if (qLower.includes("thermostat") || qLower.includes("degrees") || qLower.includes("temp")) {
-    const match = qLower.match(/(\d+)/);
-    const temp = match ? parseInt(match[1]) : 22;
-    state.thermostat = temp;
-    calls.push({ name: "set_climate", arguments: { target_temperature_c: temp, mode: "cool" } });
-  }
-
-  if (qLower.includes("front door")) {
-    if (qLower.includes("lock") && !qLower.includes("unlock")) {
-      state.front_door = "locked";
-      calls.push({ name: "lock_security", arguments: { door: "front_door", state: "locked" } });
-    } else if (qLower.includes("unlock")) {
-      state.front_door = "unlocked";
-      calls.push({ name: "lock_security", arguments: { door: "front_door", state: "unlocked" } });
-    }
-  }
-
-  if (qLower.includes("alarm")) {
-    if (qLower.includes("arm") || qLower.includes("on")) {
-      state.alarm = "armed";
-      calls.push({ name: "set_alarm", arguments: { state: "armed_home" } });
-    } else {
-      state.alarm = "off";
-      calls.push({ name: "set_alarm", arguments: { state: "disarmed" } });
-    }
-  }
-
-  if (qLower.includes("blinds")) {
-    if (qLower.includes("close")) {
-      state.blinds = "closed";
-      calls.push({ name: "control_device", arguments: { room: "bedroom", device: "blinds", action: "close" } });
-    } else if (qLower.includes("open")) {
-      state.blinds = "open";
-      calls.push({ name: "control_device", arguments: { room: "bedroom", device: "blinds", action: "open" } });
-    }
-  }
-
-  if (qLower.includes("all lights")) {
-    const lvl = qLower.includes("off") ? 0 : 100;
-    state.living_lights = lvl;
-    state.kitchen_lights = lvl;
-    state.bedroom_lights = lvl;
-    state.bathroom_lights = lvl;
-    calls.push({ name: "control_device", arguments: { room: "all", device: "lights", action: lvl === 0 ? "turn_off" : "turn_on" } });
-  }
-
-  const latency = (performance.now() - t0 + Math.random() * 4 + 4).toFixed(1);
-
-  // Render Changes
-  renderState();
-
-  if (calls.length === 0) {
-    metricsPill.textContent = `Mara AFM · ${latency} ms · No tool required`;
-    terminalOutput.innerHTML = `// User Request: "${query}"\n// Decision: No hardware tool call needed (Chitchat/General QA)\n\n{\n  <span class="json-key">"status"</span>: <span class="json-string">"no_tool_required"</span>,\n  <span class="json-key">"confidence"</span>: <span class="json-number">0.998</span>\n}`;
-  } else {
-    metricsPill.textContent = `Mara AFM · ${latency} ms · Fast-Path Pointer (99.6%)`;
-    const formatted = {
-      model: "mara-afm-25m",
-      mode: "fast_path_pointer",
-      latency_ms: parseFloat(latency),
-      tool_calls: calls,
-      execution: calls.map(c => ({
-        tool: c.name,
-        status: "ok",
-        applied_state: c.arguments
-      }))
-    };
-    terminalOutput.innerHTML = syntaxHighlight(formatted);
+  } catch (err) {
+    console.error("Inference Error:", err);
+    metricsPill.textContent = `Backend Offline · Check python -m mara.serve`;
+    terminalOutput.innerHTML = `// Error connecting to Mara AFM live inference server\n// Ensure server is running: python -m mara.serve\n\n{\n  <span class="json-key">"error"</span>: <span class="json-string">"${err.message}"</span>,\n  <span class="json-key">"hint"</span>: <span class="json-string">"Start mara/serve.py on port 8000"</span>\n}`;
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = "Run Request";
   }
 }
 
