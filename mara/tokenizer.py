@@ -1,11 +1,13 @@
 """
 Mara Tokenizer & Sequence Encoders.
-Supports native prefill-only decision delimiters:
-<|endoftext|>, <|state|>, <|q|>, <|opt|>, </opt>, <|decide|>
+Supports native prefill-only decision delimiters and AFM function-calling tokens:
+<|endoftext|>, <|state|>, <|q|>, <|opt|>, </opt>, <|decide|>,
+<|tools|>, </tools>, <|call|>, </call>, <|tool_output|>, </tool_output>
 """
 
+import json
 import re
-from typing import Any
+from typing import Any, Optional, List, Dict
 import torch
 from tokenizers import Tokenizer, models, trainers, pre_tokenizers, decoders
 from transformers import PreTrainedTokenizerFast
@@ -13,12 +15,18 @@ from transformers import PreTrainedTokenizerFast
 VOCAB_SIZE = 8192
 
 SPECIAL_TOKENS = [
-    "<|endoftext|>",  # 0
-    "<|state|>",      # 1
-    "<|q|>",          # 2
-    "<|opt|>",        # 3
-    "</opt>",         # 4
-    "<|decide|>",     # 5
+    "<|endoftext|>",    # 0
+    "<|state|>",        # 1
+    "<|q|>",            # 2
+    "<|opt|>",          # 3
+    "</opt>",           # 4
+    "<|decide|>",       # 5
+    "<|tools|>",        # 6
+    "</tools>",         # 7
+    "<|call|>",         # 8
+    "</call>",          # 9
+    "<|tool_output|>",  # 10
+    "</tool_output>",   # 11
 ]
 
 SPECIAL_MAP = {tok: idx for idx, tok in enumerate(SPECIAL_TOKENS)}
@@ -28,7 +36,7 @@ OPT_NONE, OPT_DECIDE = -1, -2
 
 
 def train_tokenizer(texts, out_path: str, vocab_size: int = VOCAB_SIZE) -> PreTrainedTokenizerFast:
-    """Trains a byte-level BPE tokenizer with reserved decision delimiters."""
+    """Trains a byte-level BPE tokenizer with reserved decision and AFM function-calling delimiters."""
     tok = Tokenizer(models.BPE(unk_token=None))
     tok.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
     tok.decoder = decoders.ByteLevel()
@@ -174,3 +182,61 @@ def encode_question_branches(
 
     max_len = max(len(b["ids"]) for b in branches) if branches else 0
     return {"branches": branches, "max_len": max_len}
+
+
+# ---------------------------------------------------------------------------
+# Automation Foundation Model (AFM) Prompt Formatters & Parsers
+# ---------------------------------------------------------------------------
+
+def format_afm_prompt(
+    tools: List[Dict[str, Any]],
+    user_query: str,
+    tool_calls: Optional[List[Dict[str, Any]]] = None,
+    tool_outputs: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """
+    Formats a complete Automation Foundation Model prompt sequence.
+    Example output:
+    <|tools|>
+    [{"name": "gpio_write", "description": "...", "parameters": {...}}]
+    </tools>
+    User: Turn on living room light
+    <|call|>
+    {"name": "control_device", "arguments": {"room": "living room", "action": "turn_on"}}
+    </call>
+    """
+    tools_json = json.dumps(tools, separators=(",", ":"))
+    text = f"<|tools|>{tools_json}</tools>\nUser: {user_query.strip()}\n"
+
+    if tool_calls is not None:
+        for call in tool_calls:
+            call_str = json.dumps(call, separators=(",", ":"))
+            text += f"<|call|>{call_str}</call>\n"
+
+    if tool_outputs is not None:
+        for out in tool_outputs:
+            out_str = json.dumps(out, separators=(",", ":"))
+            text += f"<|tool_output|>{out_str}</tool_output>\n"
+
+    return text
+
+
+def parse_afm_tool_calls(text: str) -> List[Dict[str, Any]]:
+    """
+    Extracts structured tool calls from model output containing <|call|>...<|/call|> blocks.
+    """
+    calls = []
+    pattern = re.compile(r"<\|call\|>(.*?)</call>", re.DOTALL)
+    for match in pattern.finditer(text):
+        raw = match.group(1).strip()
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and "name" in parsed:
+                calls.append(parsed)
+            elif isinstance(parsed, list):
+                for item in parsed:
+                    if isinstance(item, dict) and "name" in item:
+                        calls.append(item)
+        except json.JSONDecodeError:
+            pass
+    return calls

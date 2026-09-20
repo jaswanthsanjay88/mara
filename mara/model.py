@@ -425,6 +425,61 @@ class Mara(nn.Module):
         probs, _ = self.forward_decision(packed, device=device)
         return probs
 
+    @torch.no_grad()
+    def generate_tool_call(
+        self,
+        tok,
+        prompt_ids: torch.Tensor,
+        max_new_tokens: int = 128,
+        temperature: float = 0.7,
+        stop_token: str = "</call>",
+    ) -> str:
+        """Generates structured tool call tokens until stop_token or max_new_tokens."""
+        self.eval()
+        stop_id = tok.convert_tokens_to_ids(stop_token)
+        generated = prompt_ids.clone()
+
+        for _ in range(max_new_tokens):
+            ctx = generated[:, -self.cfg.max_seq_len:]
+            hidden, _ = self(ctx)
+            logits = self.lm_head(hidden)[:, -1, :] / max(1e-5, temperature)
+            probs = F.softmax(logits, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == stop_id:
+                break
+
+        return tok.decode(generated[0].tolist())
+
+    def route_and_execute_tool(
+        self,
+        tok,
+        user_query: str,
+        registry,
+        device: torch.device,
+    ) -> dict[str, Any]:
+        """
+        Fast-path: Routes user query to registered tools via PointerHead in <5ms,
+        and automatically executes the predicted tool in the registry.
+        """
+        record = registry.compile_fast_path_record(user_query)
+        probs = self.probs(tok, record, device=device)
+        tool_q_probs = probs[0]
+        tool_names = list(registry.tools.keys()) + ["none"]
+        best_tool_idx = tool_q_probs.argmax().item()
+        chosen_tool = tool_names[best_tool_idx]
+
+        if chosen_tool == "none":
+            return {"status": "no_tool_required", "tool": None, "confidence": float(tool_q_probs[best_tool_idx])}
+
+        exec_result = registry.execute({"name": chosen_tool, "arguments": {}})
+        return {
+            "status": "executed",
+            "tool": chosen_tool,
+            "confidence": float(tool_q_probs[best_tool_idx]),
+            "result": exec_result,
+        }
+
     def configure_optimizers(self, weight_decay=0.1, lr=6e-4, betas=(0.9, 0.95), device_type="cuda"):
         params = [p for p in self.parameters() if p.requires_grad]
         decay = [p for p in params if p.dim() >= 2]
@@ -435,3 +490,4 @@ class Mara(nn.Module):
         ]
         fused = (device_type == "cuda") and hasattr(torch.optim.AdamW, "fused")
         return torch.optim.AdamW(groups, lr=lr, betas=betas, fused=fused)
+

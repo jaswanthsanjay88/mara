@@ -112,6 +112,7 @@ def main():
     parser.add_argument("--min-lr", type=float, default=6e-5)
     parser.add_argument("--warmup-steps", type=int, default=100)
     parser.add_argument("--accum", type=int, default=4)
+    parser.add_argument("--data-jsonl", default=None, help="Path to decision/afm records jsonl")
     parser.add_argument("--lm-weight", type=float, default=0.2, help="Causal LM auxiliary regularization weight")
     parser.add_argument("--out", default=os.path.join(CKPT_DIR, "mara_decision_base.pt"))
     args = parser.parse_args()
@@ -119,7 +120,12 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device} | Base DecisionMara Pretraining")
 
-    if not os.path.exists(TOKENIZER_PATH) or not os.path.exists(RECORDS_JSONL):
+    data_file = args.data_jsonl
+    if data_file is None:
+        afm_path = os.path.join(DATA_DIR, "afm_decisions.jsonl")
+        data_file = afm_path if os.path.exists(afm_path) else RECORDS_JSONL
+
+    if not os.path.exists(TOKENIZER_PATH) or not os.path.exists(data_file):
         print("Data files not found. Preparing dataset first...")
         from .data import prepare_dataset
         prepare_dataset()
@@ -127,9 +133,9 @@ def main():
     tok = load_tokenizer(TOKENIZER_PATH)
     print(f"Loaded tokenizer with vocab size: {tok.vocab_size}")
 
-    with open(RECORDS_JSONL, "r", encoding="utf-8") as f:
+    with open(data_file, "r", encoding="utf-8") as f:
         records = [json.loads(line) for line in f]
-    print(f"Loaded {len(records):,} records.")
+    print(f"Loaded {len(records):,} records from {data_file}.")
 
     split = int(len(records) * 0.95)
     train_records = records[:split]
