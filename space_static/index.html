@@ -816,7 +816,7 @@ async function processCommand() {
 
     if (data.is_plan) {
       metricsPill.textContent = `Mara AFM · Plan: ${data.plan.goal} (${data.plan.total_steps} Steps · ${data.inference_latency_ms} ms)`;
-      let trace = `// ⚡ Mara AFM Multi-Step Execution Plan\n`;
+      let trace = `// Mara AFM Multi-Step Execution Plan\n`;
       trace += `// Goal: ${data.plan.goal} (${data.plan.total_steps} steps in ${data.inference_latency_ms}ms)\n`;
       trace += `// Strategy: ${data.plan.strategy}\n`;
       trace += `// -------------------------------------------------------------\n`;
