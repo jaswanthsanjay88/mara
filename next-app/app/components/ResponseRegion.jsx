@@ -60,10 +60,65 @@ export default function ResponseRegion({
         </div>
       )}
 
-      {/* Empty State (Before first run) */}
+      {/* Ghost State (Before first run) */}
       {!error && !response && (
-        <div className="py-8 text-[14px] leading-[22px] text-[var(--fg-2)] font-normal">
-          Ask for something above. Mara returns the tool calls it would make, and how sure it is.
+        <div className="space-y-4 select-none transition-opacity">
+          <div className="flex items-center justify-between text-[11px] font-mono text-[var(--fg-3)]">
+            <span>PREVIEW · STANDBY</span>
+            <span>SINGLE FORWARD PASS</span>
+          </div>
+
+          {/* Ghost JSON Block */}
+          <div className="p-3.5 rounded-[8px] bg-[var(--fill-1)] border border-dashed border-[var(--line-strong)] space-y-2.5 opacity-65">
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="text-[var(--fg-3)]">// Expected output structure</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-mono font-medium tracking-wider bg-[var(--fill-2)] text-[var(--fg-2)]">
+                Sample
+              </span>
+            </div>
+
+            <pre className="font-mono text-[12.5px] leading-[1.6] text-[var(--fg-2)] overflow-x-auto">
+              <code>{`{
+  "tool": "set_lights",
+  "arguments": {
+    "room": "Living room",
+    "on": true,
+    "brightness": 100
+  },
+  "confidence": 0.98
+}`}</code>
+            </pre>
+          </div>
+
+          {/* Ghost Confidence & Outcomes */}
+          <div className="p-2.5 rounded-[6px] border border-[var(--line)] bg-[var(--fill-1)]/50 flex items-center justify-between opacity-55 text-[11.5px] font-mono">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500/70" />
+              <span className="text-[var(--fg-2)] font-medium">Outcome: Act</span>
+              <span className="text-[var(--fg-3)]">(&ge; {actAt})</span>
+            </div>
+            <span className="text-[var(--fg-3)]">Direct execution</span>
+          </div>
+
+          {/* Ghost Metrics Strip */}
+          <div className="grid grid-cols-3 gap-2 opacity-60 text-center font-mono">
+            <div className="p-2 rounded bg-[var(--fill-1)] border border-[var(--line)]">
+              <div className="text-[10px] text-[var(--fg-3)] uppercase">LATENCY</div>
+              <div className="text-[12px] font-[600] text-[var(--fg-2)]">~0.72 ms</div>
+            </div>
+            <div className="p-2 rounded bg-[var(--fill-1)] border border-[var(--line)]">
+              <div className="text-[10px] text-[var(--fg-3)] uppercase">MEMORY</div>
+              <div className="text-[12px] font-[600] text-[var(--fg-2)]">0.15 MB</div>
+            </div>
+            <div className="p-2 rounded bg-[var(--fill-1)] border border-[var(--line)]">
+              <div className="text-[10px] text-[var(--fg-3)] uppercase">TOKENS</div>
+              <div className="text-[12px] font-[600] text-[var(--fg-2)]">0 (direct)</div>
+            </div>
+          </div>
+
+          <p className="text-[12.5px] leading-[18px] text-[var(--fg-3)] text-center pt-1">
+            Ask for something above or click a prompt chip. Mara returns tool calls in &lt; 2 ms.
+          </p>
         </div>
       )}
 

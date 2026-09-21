@@ -8,6 +8,7 @@ import ToolEditor from "./ToolEditor";
 export default function ToolList({
   tools,
   justCalledToolNames = [],
+  onToggleTool,
   onUpdateTool,
   onRemoveTool,
   onAddTool,
@@ -18,21 +19,11 @@ export default function ToolList({
   const existingNames = tools.map((t) => t.name);
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      {/* Section Heading with Count */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-[15px] leading-[22px] font-[500] text-[var(--fg)]">
-          Tools
-        </h2>
-        <span className="text-[13px] leading-[18px] text-[var(--fg-2)] font-normal">
-          {tools.length}
-        </span>
-      </div>
-
-      {/* Tools Stack */}
-      <div className="flex-1 space-y-3 overflow-y-auto no-scrollbar pr-0.5">
+    <div className="flex flex-col h-full space-y-2.5">
+      {/* Tools Stack - compact and scrollable if needed */}
+      <div className="flex-1 space-y-2 overflow-y-auto no-scrollbar pr-0.5">
         {tools.length === 0 && !isAddingNew ? (
-          <div className="py-6 text-[14px] leading-[22px] text-[var(--fg-2)]">
+          <div className="py-6 text-[13px] leading-[20px] text-[var(--fg-2)]">
             No tools yet. The model can only call tools you declare.
           </div>
         ) : (
@@ -59,6 +50,7 @@ export default function ToolList({
                 key={tool.name}
                 tool={tool}
                 isJustCalled={isJustCalled}
+                onToggle={(toolName, enabled) => onToggleTool?.(toolName, enabled)}
                 onEdit={() => {
                   setIsAddingNew(false);
                   setEditingToolName(tool.name);
@@ -89,9 +81,9 @@ export default function ToolList({
             setEditingToolName(null);
             setIsAddingNew(true);
           }}
-          className="w-full h-9 rounded-[6px] border border-[var(--line)] hover:border-[var(--line-strong)] flex items-center justify-center space-x-1.5 text-[13px] leading-[18px] font-normal text-[var(--fg)] hover:bg-[var(--fill-2)] transition-colors cursor-pointer"
+          className="w-full h-8 rounded-[6px] border border-[var(--line)] hover:border-[var(--line-strong)] flex items-center justify-center space-x-1.5 text-[12px] leading-[18px] font-normal text-[var(--fg)] hover:bg-[var(--fill-2)] transition-colors cursor-pointer"
         >
-          <Plus size={14} strokeWidth={1.5} />
+          <Plus size={13} strokeWidth={1.5} />
           <span>Add tool</span>
         </button>
       )}

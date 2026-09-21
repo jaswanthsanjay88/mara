@@ -279,10 +279,12 @@ export default function MaraPlayground() {
           }
         }
 
+        const activeTools = tools.filter((t) => t.enabled !== false);
+
         // In-Browser WebAssembly inference (Mara ONNX downloaded from Hugging Face Hub)
         if (!res && (engineStatus.kind === "browser-wasm" || browserMara.status === "ready")) {
           try {
-            res = await browserMara.complete(textToSubmit, tools, actAt);
+            res = await browserMara.complete(textToSubmit, activeTools, actAt);
           } catch (wasmErr) {
             console.warn("Browser WASM inference failed, falling back to mock:", wasmErr);
           }
@@ -290,7 +292,7 @@ export default function MaraPlayground() {
 
         // Fallback to offline MockAdapter
         if (!res) {
-          res = await adapterRef.current.complete(textToSubmit, tools);
+          res = await adapterRef.current.complete(textToSubmit, activeTools);
         }
 
         clearTimeout(timerRef.current);
@@ -313,7 +315,14 @@ export default function MaraPlayground() {
     [tools, isLoading, actAt, executeCallsOnDevice, engineStatus]
   );
 
-  // Tool modifications mark response stale
+  // Tool toggle & modifications mark response stale
+  const handleToggleTool = (toolName, enabled) => {
+    setTools((prev) =>
+      prev.map((t) => (t.name === toolName ? { ...t, enabled } : t))
+    );
+    if (response) setIsStale(true);
+  };
+
   const handleUpdateTool = (oldName, updatedTool) => {
     setTools((prev) => prev.map((t) => (t.name === oldName ? updatedTool : t)));
     if (response) setIsStale(true);
@@ -357,6 +366,7 @@ export default function MaraPlayground() {
 
   const currentPresetConfig = PRESET_CONFIG["smart-home"];
   const outcome = evaluateOutcome(response, actAt);
+  const activeToolCount = tools.filter((t) => t.enabled !== false).length;
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-[var(--bg)] text-[var(--fg)] transition-colors">
@@ -426,17 +436,19 @@ export default function MaraPlayground() {
             }`}
           >
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-1">
-                <h2 className="text-[15px] leading-[22px] font-[500] text-[var(--fg)]">
-                  Tools
+              <div className="flex items-center justify-between pb-1 h-[32px]">
+                <h2 className="text-[15px] leading-[22px] font-[500] text-[var(--fg)] flex items-center gap-1.5">
+                  <span>Tools</span>
+                  <span className="text-[var(--fg-3)] font-normal">·</span>
+                  <span className="text-[12px] font-mono text-[var(--fg-2)] font-normal">
+                    {activeToolCount} active
+                  </span>
                 </h2>
-                <span className="text-[12px] font-mono text-[var(--fg-3)]">
-                  {tools.length} active
-                </span>
               </div>
               <ToolList
                 tools={tools}
                 justCalledToolNames={justCalledToolNames}
+                onToggleTool={handleToggleTool}
                 onUpdateTool={handleUpdateTool}
                 onRemoveTool={handleRemoveTool}
                 onAddTool={handleAddTool}
@@ -446,10 +458,20 @@ export default function MaraPlayground() {
 
           {/* Region 2: Request & Response (flexible min 440px) */}
           <section
-            className={`md:block px-0 md:px-6 pb-6 md:pb-0 space-y-6 min-w-0 ${
+            className={`md:block px-0 md:px-6 pb-6 md:pb-0 space-y-4 min-w-0 ${
               mobileTab === "request" ? "block" : "hidden"
             }`}
           >
+            {/* Column Top Header matching Region 1 and Region 3 */}
+            <div className="flex items-center justify-between pb-1 h-[32px]">
+              <h2 className="text-[15px] leading-[22px] font-[500] text-[var(--fg)]">
+                Instruction
+              </h2>
+              <span className="text-[12px] font-mono text-[var(--fg-3)]">
+                Single Turn
+              </span>
+            </div>
+
             {/* Request Block */}
             <div className="space-y-3">
               <PromptBar
@@ -458,6 +480,7 @@ export default function MaraPlayground() {
                 onSubmit={handleSubmitPrompt}
                 placeholder={currentPresetConfig.placeholder}
                 isLoading={isLoading}
+                downloadProgress={downloadProgress}
               />
               <ExampleChips
                 chips={currentPresetConfig.chips}

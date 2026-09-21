@@ -527,12 +527,12 @@ export default function FloorPlan({
           <circle cx="150" cy="50" r="3" fill="var(--fg)" />
         </g>
 
-        {/* 10. Thermostat Dial at (130, 236), radius 12 */}
+        {/* 10. Thermostat Dial at (130, 234), radius 12 */}
         <g id="thermostat-group">
           {/* Base outer ring */}
           <circle
             cx="130"
-            cy="236"
+            cy="234"
             r="12"
             fill="var(--bg)"
             stroke="var(--line-strong)"
@@ -542,7 +542,7 @@ export default function FloorPlan({
           {/* Sweeping temperature arc up to 270 deg */}
           {sweepDegrees > 0 && (
             <path
-              d={describeArc(130, 236, 12, startAngle, endAngle)}
+              d={describeArc(130, 234, 12, startAngle, endAngle)}
               fill="none"
               stroke="var(--fg)"
               strokeWidth="2"
@@ -553,100 +553,120 @@ export default function FloorPlan({
           {/* Temperature Number in Mono 10 */}
           <text
             x="130"
-            y="239.5"
+            y="237.5"
             textAnchor="middle"
             fill="var(--fg)"
             className="font-mono text-[10px] font-normal tabular-nums select-none"
           >
-            {Math.round(thermostat)}
+            {Math.round(thermostat)}°
+          </text>
+
+          {/* Micro Legend */}
+          <text
+            x="130"
+            y="253"
+            textAnchor="middle"
+            fill="var(--fg-3)"
+            className="font-mono text-[9px] uppercase tracking-wider select-none pointer-events-none"
+          >
+            HVAC
           </text>
         </g>
 
-        {/* 11. Front Door Lock Padlock Glyph at (130, 304) */}
-        <g id="padlock-group" className="transition-all duration-200">
-          {isFrontLocked ? (
-            /* Locked: closed shackle, body filled --fg */
-            <g transform="translate(124, 298)">
-              {/* Shackle */}
-              <path
-                d="M 3 6 L 3 3.5 A 3 3 0 0 1 9 3.5 L 9 6"
-                fill="none"
-                stroke="var(--fg)"
-                strokeWidth="1.5"
-              />
-              {/* Body */}
-              <rect x="1" y="6" width="10" height="7" rx="1.5" fill="var(--fg)" />
-            </g>
-          ) : (
-            /* Unlocked: shackle swung open ~30 deg, body outlined only */
-            <g transform="translate(124, 298)">
-              {/* Open Shackle */}
-              <path
-                d="M 3 6 L 3 3.5 A 3 3 0 0 1 9 3.5 L 11 1.5"
-                fill="none"
-                stroke="var(--fg)"
-                strokeWidth="1.5"
-              />
-              {/* Outlined Body */}
-              <rect
-                x="1"
-                y="6"
-                width="10"
-                height="7"
-                rx="1.5"
-                fill="none"
-                stroke="var(--fg)"
-                strokeWidth="1.5"
-              />
-            </g>
-          )}
+        {/* 11. Front Door Lock Padlock Glyph with Animated Shackle */}
+        <g id="padlock-group" className="transition-all duration-300">
+          <g transform="translate(124, 280)">
+            {/* Shackle with smooth rotation animation */}
+            <path
+              d="M 3 6 L 3 3 A 3 3 0 0 1 9 3 L 9 6"
+              fill="none"
+              stroke={isFrontLocked ? "var(--fg)" : "var(--fg-2)"}
+              strokeWidth="1.5"
+              className="transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              style={{
+                transformOrigin: "3px 6px",
+                transform: isFrontLocked ? "rotate(0deg)" : "rotate(-32deg) translate(-1px, -2px)",
+              }}
+            />
+            {/* Body */}
+            <rect
+              x="1"
+              y="6"
+              width="10"
+              height="7"
+              rx="1.5"
+              fill={isFrontLocked ? "var(--fg)" : "none"}
+              stroke="var(--fg)"
+              strokeWidth="1.5"
+              className="transition-colors duration-200"
+            />
+          </g>
+
+          {/* Lock Legend Text */}
+          <text
+            x="130"
+            y="304"
+            textAnchor="middle"
+            fill="var(--fg-3)"
+            className="font-mono text-[9px] uppercase tracking-wider select-none pointer-events-none"
+          >
+            {isFrontLocked ? "Locked" : "Unlocked"}
+          </text>
         </g>
 
-        {/* 12. Room Labels and Readouts */}
-        <g className="font-sans text-[12px] font-normal select-none pointer-events-none">
+        {/* 12. Room Labels and Readouts (Padded off walls, zero collisions) */}
+        <g className="font-sans text-[11px] font-normal select-none pointer-events-none">
           {/* Living room */}
-          <text x="18" y="24" fill="var(--fg-2)">
+          <text x="20" y="28" fill="var(--fg-2)">
             Living room
           </text>
           {rooms["Living room"].on && (
-            <text x="88" y="24" fill="var(--fg)" className="font-mono text-[12px]">
-              {rooms["Living room"].brightness}
+            <text x="96" y="28" fill="var(--fg)" className="font-mono text-[11px]">
+              {rooms["Living room"].brightness}%
             </text>
           )}
 
           {/* Kitchen */}
-          <text x="198" y="24" fill="var(--fg-2)">
+          <text x="200" y="28" fill="var(--fg-2)">
             Kitchen
           </text>
           {rooms["Kitchen"].on && (
-            <text x="246" y="24" fill="var(--fg)" className="font-mono text-[12px]">
-              {rooms["Kitchen"].brightness}
+            <text x="252" y="28" fill="var(--fg)" className="font-mono text-[11px]">
+              {rooms["Kitchen"].brightness}%
             </text>
           )}
 
-          {/* Bedroom */}
-          <text x="18" y="174" fill="var(--fg-2)">
+          {/* Bedroom (Padded well below wall at y=182) */}
+          <text x="20" y="182" fill="var(--fg-2)">
             Bedroom
           </text>
           {rooms["Bedroom"].on && (
-            <text x="74" y="174" fill="var(--fg)" className="font-mono text-[12px]">
-              {rooms["Bedroom"].brightness}
+            <text x="76" y="182" fill="var(--fg)" className="font-mono text-[11px]">
+              {rooms["Bedroom"].brightness}%
             </text>
           )}
 
-          {/* Bathroom */}
-          <text x="158" y="174" fill="var(--fg-2)">
-            Bathroom
+          {/* Bathroom (Compact Bath at x=154 y=182) */}
+          <text x="154" y="182" fill="var(--fg-2)">
+            Bath
           </text>
           {rooms["Bathroom"].on && (
-            <text x="202" y="174" fill="var(--fg)" className="font-mono text-[12px]">
-              {rooms["Bathroom"].brightness}
+            <text x="184" y="182" fill="var(--fg)" className="font-mono text-[11px]">
+              {rooms["Bathroom"].brightness}%
             </text>
           )}
 
-          {/* Garage */}
-          <text x="218" y="174" fill="var(--fg-2)">
-            {isGarageOpen ? "Garage  Open" : "Garage"}
+          {/* Garage (Distinct at x=236 y=182, 50px away from Bath) */}
+          <text x="236" y="182" fill="var(--fg-2)">
+            Garage
+          </text>
+          <text
+            x="278"
+            y="182"
+            fill={isGarageOpen ? "var(--fg)" : "var(--fg-3)"}
+            className="font-mono text-[11px]"
+          >
+            {isGarageOpen ? "Open" : "Closed"}
           </text>
         </g>
 
@@ -734,7 +754,7 @@ export default function FloorPlan({
           </g>
         )}
 
-        {/* 15. Animated Ping Rings */}
+        {/* 15. Animated Ping Rings (Actuation Amber Feedback) */}
         {activePings.map((ping) => (
           <circle
             key={ping.id}
@@ -742,8 +762,8 @@ export default function FloorPlan({
             cy={ping.y}
             r="6"
             fill="none"
-            stroke="var(--fg)"
-            strokeWidth="1"
+            stroke="#F59E0B"
+            strokeWidth="1.5"
             className="ping-ring pointer-events-none"
           />
         ))}
