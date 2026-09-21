@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Header from "./components/Header";
-import PresetSwitcher from "./components/PresetSwitcher";
 import ToolList from "./components/ToolList";
 import PromptBar from "./components/PromptBar";
 import ExampleChips from "./components/ExampleChips";
@@ -11,7 +10,6 @@ import DevicePanel from "./components/DevicePanel";
 import {
   PRESET_CONFIG,
   INITIAL_SMART_HOME_DEVICE_STATE,
-  INITIAL_COMPUTER_LOG,
   MockAdapter,
   evaluateOutcome,
 } from "./lib/mara";
@@ -47,8 +45,7 @@ export default function MaraPlayground() {
     }
   };
 
-  // Preset & Tools State
-  const [activePreset, setActivePreset] = useState("smart-home");
+  // Tools State
   const [tools, setTools] = useState(PRESET_CONFIG["smart-home"].defaultTools);
   const [prompt, setPrompt] = useState("");
 
@@ -72,7 +69,6 @@ export default function MaraPlayground() {
 
   // Device States
   const [smartHomeState, setSmartHomeState] = useState(INITIAL_SMART_HOME_DEVICE_STATE);
-  const [computerLog, setComputerLog] = useState(INITIAL_COMPUTER_LOG);
   const [changedKeys, setChangedKeys] = useState([]);
 
   // Hover state between Response Call and Floor Plan
@@ -162,7 +158,6 @@ export default function MaraPlayground() {
       devices: { ...smartHomeState.devices },
       doors: { ...smartHomeState.doors },
     };
-    let nextComp = [...computerLog];
     const changed = [];
 
     for (const call of calls) {
@@ -209,34 +204,17 @@ export default function MaraPlayground() {
           nextHome.doors[matched] = locked ? "Locked" : "Unlocked";
           changed.push(matched);
         }
-      } else if (name === "open_url") {
-        nextComp.unshift(`Opened ${args.url || "example.com"}`);
-        changed.push("computer_log");
-      } else if (name === "create_note") {
-        nextComp.unshift("Note saved");
-        changed.push("computer_log");
-      } else if (name === "start_timer") {
-        nextComp.unshift(`Timer ${args.minutes || 10} min`);
-        changed.push("computer_log");
-      } else if (name === "open_app") {
-        nextComp.unshift(`Opened ${args.name || "app"}`);
-        changed.push("computer_log");
       }
     }
 
-    if (activePreset === "smart-home") {
-      setSmartHomeState(nextHome);
-    } else {
-      setComputerLog(nextComp);
-    }
-
+    setSmartHomeState(nextHome);
     setChangedKeys(changed);
 
     // Clear flash after 600ms
     setTimeout(() => {
       setChangedKeys([]);
     }, 600);
-  }, [smartHomeState, computerLog, activePreset]);
+  }, [smartHomeState]);
 
   // Submit Prompt
   const handleSubmitPrompt = useCallback(
@@ -256,8 +234,8 @@ export default function MaraPlayground() {
       try {
         let res = null;
 
-        // If live PyTorch engine is running and on smart-home preset, route through /api/run
-        if (engineStatus.kind === "on-device" && activePreset === "smart-home") {
+        // If live PyTorch engine is running, route through /api/run
+        if (engineStatus.kind === "on-device") {
           try {
             const apiRes = await fetch("/api/run", {
               method: "POST",
@@ -332,27 +310,8 @@ export default function MaraPlayground() {
         setIsLoading(false);
       }
     },
-    [tools, isLoading, actAt, executeCallsOnDevice, engineStatus, activePreset]
+    [tools, isLoading, actAt, executeCallsOnDevice, engineStatus]
   );
-
-  // Switch preset
-  const handleSelectPreset = (newPresetId) => {
-    if (newPresetId === activePreset) return;
-    setActivePreset(newPresetId);
-    setTools(PRESET_CONFIG[newPresetId].defaultTools);
-    setPrompt("");
-    setResponse(null);
-    setIsStale(false);
-    setError(null);
-    setHasRunManually(false);
-    setChangedKeys([]);
-    setHoveredCall(null);
-    if (newPresetId === "smart-home") {
-      setSmartHomeState(INITIAL_SMART_HOME_DEVICE_STATE);
-    } else {
-      setComputerLog(INITIAL_COMPUTER_LOG);
-    }
-  };
 
   // Tool modifications mark response stale
   const handleUpdateTool = (oldName, updatedTool) => {
@@ -372,11 +331,7 @@ export default function MaraPlayground() {
 
   // Reset Device state
   const handleResetDevice = () => {
-    if (activePreset === "smart-home") {
-      setSmartHomeState(INITIAL_SMART_HOME_DEVICE_STATE);
-    } else {
-      setComputerLog(INITIAL_COMPUTER_LOG);
-    }
+    setSmartHomeState(INITIAL_SMART_HOME_DEVICE_STATE);
     setChangedKeys([]);
     setHoveredCall(null);
   };
@@ -400,7 +355,7 @@ export default function MaraPlayground() {
     ? response.function_calls.map((c) => c.name)
     : [];
 
-  const currentPresetConfig = PRESET_CONFIG[activePreset];
+  const currentPresetConfig = PRESET_CONFIG["smart-home"];
   const outcome = evaluateOutcome(response, actAt);
 
   return (
@@ -470,11 +425,15 @@ export default function MaraPlayground() {
               mobileTab === "tools" ? "block" : "hidden"
             }`}
           >
-            <div className="space-y-6">
-              <PresetSwitcher
-                activePreset={activePreset}
-                onSelectPreset={handleSelectPreset}
-              />
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1">
+                <h2 className="text-[15px] leading-[22px] font-[500] text-[var(--fg)]">
+                  Tools
+                </h2>
+                <span className="text-[12px] font-mono text-[var(--fg-3)]">
+                  {tools.length} active
+                </span>
+              </div>
               <ToolList
                 tools={tools}
                 justCalledToolNames={justCalledToolNames}
@@ -534,9 +493,7 @@ export default function MaraPlayground() {
             {/* Tablet fallback: Device section underneath Response (700px to 1099px) */}
             <div className="hidden md:block lg:hidden pt-6 border-t border-[var(--line)]">
               <DevicePanel
-                presetId={activePreset}
                 smartHomeState={smartHomeState}
-                computerLog={computerLog}
                 changedKeys={changedKeys}
                 onReset={handleResetDevice}
                 activeCalls={response?.function_calls || []}
@@ -553,9 +510,7 @@ export default function MaraPlayground() {
             }`}
           >
             <DevicePanel
-              presetId={activePreset}
               smartHomeState={smartHomeState}
-              computerLog={computerLog}
               changedKeys={changedKeys}
               onReset={handleResetDevice}
               activeCalls={response?.function_calls || []}

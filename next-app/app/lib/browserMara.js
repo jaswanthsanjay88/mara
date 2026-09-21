@@ -372,38 +372,6 @@ export class BrowserMaraEngine {
       };
     }
 
-    // 5. Computer Tools
-    if (toolMap.has("open_url") && q.includes(".com")) {
-      const match = q.match(/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      return {
-        toolName: "open_url",
-        call: { name: "open_url", arguments: { url: match ? match[1] : "example.com" } },
-        confidence: 0.95,
-        reasoning: "URL detected -> open_url",
-      };
-    }
-
-    if (toolMap.has("create_note") && q.includes("note")) {
-      const text = q.replace(/^.*?note\s*(?:that\s*)?/i, "");
-      return {
-        toolName: "create_note",
-        call: { name: "create_note", arguments: { text: text || "New note" } },
-        confidence: 0.89,
-        reasoning: "Note instruction -> create_note",
-      };
-    }
-
-    if (toolMap.has("start_timer") && q.includes("timer")) {
-      const match = q.match(/(\d+)/);
-      const min = match ? parseInt(match[1], 10) : 10;
-      return {
-        toolName: "start_timer",
-        call: { name: "start_timer", arguments: { minutes: min } },
-        confidence: 0.93,
-        reasoning: `'${min} min' -> start_timer`,
-      };
-    }
-
     return {
       toolName: null,
       call: null,

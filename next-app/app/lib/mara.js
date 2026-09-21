@@ -38,37 +38,6 @@ export const SMART_HOME_TOOLS = [
   },
 ];
 
-export const COMPUTER_TOOLS = [
-  {
-    name: "open_url",
-    description: "Open a web address in the browser.",
-    parameters: {
-      url: { type: "string", required: true },
-    },
-  },
-  {
-    name: "create_note",
-    description: "Save a short note.",
-    parameters: {
-      text: { type: "string", required: true },
-    },
-  },
-  {
-    name: "start_timer",
-    description: "Start a countdown timer.",
-    parameters: {
-      minutes: { type: "number", required: true },
-    },
-  },
-  {
-    name: "open_app",
-    description: "Open an installed app by name.",
-    parameters: {
-      name: { type: "string", required: true },
-    },
-  },
-];
-
 export const PRESET_CONFIG = {
   "smart-home": {
     label: "Smart home",
@@ -79,17 +48,6 @@ export const PRESET_CONFIG = {
       "Turn on the fan and lock the front door",
       "It's too dark in the bathroom",
       "What's the capital of France?",
-    ],
-  },
-  computer: {
-    label: "Computer",
-    placeholder: "Tell your computer what to do",
-    defaultTools: COMPUTER_TOOLS,
-    chips: [
-      "Open example.com",
-      "Note that the lease is due Friday",
-      "Start a ten minute timer",
-      "Book me a flight to Lisbon",
     ],
   },
 };
@@ -110,8 +68,6 @@ export const INITIAL_SMART_HOME_DEVICE_STATE = {
     "Front door": "Locked",
   },
 };
-
-export const INITIAL_COMPUTER_LOG = [];
 
 export const FLOOR = 0.1;
 
@@ -196,47 +152,6 @@ export class MockAdapter {
       });
     }
 
-    // Canonical Computer presets matching Section 8
-    if (pLower.includes("open example.com") || pLower.includes("example.com")) {
-      if (toolMap.has("open_url")) {
-        return this.createResponse({
-          calls: [{ name: "open_url", arguments: { url: "example.com" } }],
-          reasoning: "'example.com' -> url",
-          confidence: 0.95,
-          t0,
-        });
-      }
-    }
-
-    if (pLower.includes("note that the lease is due friday") || pLower.includes("lease is due friday")) {
-      if (toolMap.has("create_note")) {
-        return this.createResponse({
-          calls: [{ name: "create_note", arguments: { text: "the lease is due Friday" } }],
-          reasoning: "'lease is due Friday' -> text",
-          confidence: 0.89,
-          t0,
-        });
-      }
-    }
-
-    if (pLower.includes("start a ten minute timer") || pLower.includes("ten minute timer")) {
-      if (toolMap.has("start_timer")) {
-        return this.createResponse({
-          calls: [{ name: "start_timer", arguments: { minutes: 10 } }],
-          reasoning: "'ten minute' -> minutes 10",
-          confidence: 0.93,
-          t0,
-        });
-      }
-    }
-
-    if (pLower.includes("book me a flight to lisbon") || pLower.includes("flight to lisbon")) {
-      return this.createEmptyResponse({
-        reasoning: "No tool available for airline reservations",
-        t0,
-      });
-    }
-
     // Dynamic extraction against active tools for custom input
     const calls = [];
     const reasons = [];
@@ -286,36 +201,6 @@ export class MockAdapter {
       const locked = !pLower.includes("unlock");
       calls.push({ name: "lock_door", arguments: { door, locked } });
       reasons.push(`'${door}' -> door; locked ${locked}`);
-    }
-
-    // 5. open_url
-    if (toolMap.has("open_url") && (pLower.includes("http") || pLower.includes(".com") || pLower.includes(".org") || pLower.includes("url") || pLower.includes("site") || pLower.includes("web"))) {
-      const urlMatch = pLower.match(/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-      const url = urlMatch ? urlMatch[1] : "example.com";
-      calls.push({ name: "open_url", arguments: { url } });
-      reasons.push(`'${url}' -> url`);
-    }
-
-    // 6. create_note
-    if (toolMap.has("create_note") && (pLower.includes("note") || pLower.includes("memo") || pLower.includes("remember") || pLower.includes("write down"))) {
-      const text = p.replace(/^(create note|note that|note|write down|remember to|remember)\s*/i, "");
-      calls.push({ name: "create_note", arguments: { text: text || p } });
-      reasons.push(`'${text || p}' -> text`);
-    }
-
-    // 7. start_timer
-    if (toolMap.has("start_timer") && (pLower.includes("timer") || pLower.includes("countdown") || pLower.includes("alarm"))) {
-      const numMatch = pLower.match(/([0-9]+)/);
-      const minutes = numMatch ? parseInt(numMatch[1], 10) : 5;
-      calls.push({ name: "start_timer", arguments: { minutes } });
-      reasons.push(`'${minutes}' -> minutes`);
-    }
-
-    // 8. open_app
-    if (toolMap.has("open_app") && (pLower.includes("app") || pLower.includes("launch") || pLower.includes("open"))) {
-      const nameMatch = p.replace(/^(launch|open app|open)\s*/i, "");
-      calls.push({ name: "open_app", arguments: { name: nameMatch || "Terminal" } });
-      reasons.push(`'${nameMatch || "Terminal"}' -> name`);
     }
 
     if (calls.length > 0) {

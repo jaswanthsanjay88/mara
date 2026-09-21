@@ -5,16 +5,13 @@ import { ChevronDown } from "lucide-react";
 import FloorPlan from "./FloorPlan";
 
 export default function DevicePanel({
-  presetId,
   smartHomeState,
-  computerLog = [],
   changedKeys = [],
   onReset,
   activeCalls = [],
   outcome = "refuse",
   hoveredCall = null,
 }) {
-  const isSmartHome = presetId === "smart-home";
   const [detailsOpen, setDetailsOpen] = useState(true);
 
   return (
@@ -26,9 +23,8 @@ export default function DevicePanel({
       </div>
 
       <div className="surface rounded-[10px] p-4 bg-[var(--fill-1)] border border-[var(--line)] space-y-4">
-        {isSmartHome ? (
-          <div className="space-y-4">
-            {/* Top: 2D Floor Plan */}
+        <div className="space-y-4">
+          {/* Top: 2D Floor Plan */}
             <div className="w-full">
               <FloorPlan
                 state={smartHomeState}
@@ -142,29 +138,6 @@ export default function DevicePanel({
               )}
             </div>
           </div>
-        ) : (
-          /* Computer Preset Log */
-          <div className="space-y-2 font-mono text-[12px] leading-[18px]">
-            {computerLog.length === 0 ? (
-              <div className="text-[var(--fg-2)] py-4 font-normal">
-                Nothing has run yet.
-              </div>
-            ) : (
-              <div className="divide-y divide-[var(--line)]">
-                {computerLog.slice(0, 5).map((entry, idx) => (
-                  <div
-                    key={idx}
-                    className={`py-2 px-1 text-[var(--fg)] ${
-                      idx === 0 && changedKeys.includes("computer_log") ? "animate-flash" : ""
-                    }`}
-                  >
-                    {entry}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Reset Action */}
         <div className="pt-2 border-t border-[var(--line)]">
