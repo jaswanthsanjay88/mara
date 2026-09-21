@@ -241,21 +241,45 @@ Selected: none (Confidence: 100.0% -> Refusal)
 
 ## Benchmarks
 
-Evaluated across 7 functional automation domains on held-out test distributions:
+### Head-to-Head: Mara AFM vs. Dedicated Micro-Agent (Needle 3)
 
-| Metric | Cloud LLMs (7B–70B) | General Edge SLMs (1B–3B) | Dedicated Micro-Agents (100M+) | Mara AFM (692k) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Model Size** | 14 GB – 140 GB | 2 GB – 6 GB | 15 MB – 50 MB | **2.7 MB** |
-| **RAM Footprint (Inference)** | 16 GB – 160 GB | 2.5 GB – 8 GB | 64 MB – 128 MB | **12 MB** |
-| **Inference Latency (x86 CPU)**| 800 ms – 3,500 ms | 180 ms – 650 ms | 20 ms – 50 ms | **4.9 ms – 9.9 ms** |
-| **Tool Routing Accuracy** | 91.2% | 84.6% | 96.4% | **100.0%** |
-| **JSON Syntax Error Rate** | 4.8% | 12.3% | < 1.0% | **0.00% (Guaranteed)** |
-| **False Positive Trigger Rate** | 6.4% | 14.1% | 2.1% | **0.00%** |
-| **Microcontroller / MCU Ready** | No | No | Limited | **Yes (ESP32 / Pi / Mobile)** |
+Evaluated on the exact same 104-sample held-out benchmark suite (`data/heldout_benchmark.jsonl`) using the standardized **Ordered Exact Match (OEM)** metric (requiring exact match on tool function names, order, call counts, and all typed arguments):
 
-To reproduce these results on your own hardware:
+| Metric | Dedicated Micro-Agent (Needle 3) | Mara AFM (Jointly Fine-Tuned + Neural Heads) | Trade-Off / Difference |
+| :--- | :---: | :---: | :---: |
+| **Model Size** | ~100 MB | **2.7 MB** | **~37× smaller footprint** |
+| **RAM Footprint (Inference)** | ~100.5 MB | **12.4 MB** | **~8× lower memory usage** |
+| **Avg CPU Latency per Call** | 404.3 ms | **9.95 ms** | **~40× faster** |
+| **Clean Queries OEM** | 95.0% (19/20) | **100.0%** (20/20) | +5.0% on clean requests |
+| **Paraphrases & Slang OEM** | 77.3% (17/22) | **77.3%** (17/22) | Parity on varied idioms |
+| **Typos & ASR Noise OEM** | 40.9% (9/22) | **95.5%** (21/22) | +54.6% (Mara retains routing under noisy input) |
+| **Compound Multi-Step OEM** | 25.0% (5/20) | **100.0%** (20/20) | +75.0% (Planner decomposes multi-action conjunctions) |
+| **Hard Negatives OEM** | 5.0% (1/20) | **95.0%** (19/20) | +90.0% (Rejects out-of-scope & near-miss questions) |
+| **False Positive Trigger Rate** | 95.0% (19/20 triggered) | **5.0%** (1/20 triggered) | **90% reduction in false activations** |
+| **Overall OEM (Exact Match)** | **49.0%** (51/104) | **93.3%** (97/104) | **+44.3% overall exact match** |
+
+### Honest Architectural Trade-Offs
+
+1. **Scope and Generalization**:
+   - **General Micro-Agents (e.g. Needle 3)** are designed for broad zero-shot argument generation across open-domain APIs (BFCL suites). When presented with new, arbitrary JSON schemas, they attempt open-ended autoregressive decoding.
+   - **Mara AFM** is an ultra-compact (692k parameters, 2.7 MB) specialized edge router and planner. Its latent bilinear pointer heads (`SpanPointerHead` and `EnumHead`) are tailored for deterministic, fixed/registered toolsets (smart-home appliances, IoT peripherals, automotive CAN-bus, robotics). Mara is mathematically incapable of producing invalid JSON or missing braces, but is not designed for open-ended creative prose generation.
+2. **Compound Conjunction Handling**:
+   - Standard single-pass tool callers struggle when users combine multiple intents (`"dim living room to 30 and lock the front door"`), frequently truncating to the first action (25.0% OEM).
+   - Mara couples neural routing with an explicit `ToolPlanner` that decomposes compound sentences into atomic steps prior to neural dispatch (100.0% OEM).
+3. **Near-Miss Discrimination**:
+   - Autoregressive tool call generation easily confuses topical questions (*"how does a thermostat work in modern homes"*) with active commands, yielding high false positive trigger rates (95%).
+   - Mara includes an explicit `none` candidate in its fast-path decision record and is trained to identify informational questions as non-actions (5.0% false trigger rate).
+4. **Hardware Suitability**:
+   - At ~404 ms CPU latency and ~100 MB RAM, general micro-agents require operating-system-level compute (Linux/macOS/Windows).
+   - Mara's sub-10ms CPU latency and 12.4 MB peak RAM allow it to run directly on microcontrollers, edge gateways, mobile devices, and in-browser WASM.
+
+To reproduce these head-to-head benchmarks on your local machine:
 ```bash
-python research/benchmark_afm.py --num-samples 100
+# Run Mara benchmark on held-out suite
+python research/benchmark_head_to_head.py
+
+# Run Needle 3 benchmark on the exact same suite
+python research/run_needle_benchmark.py
 ```
 
 ---

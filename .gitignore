@@ -5,3 +5,7 @@ data/
 checkpoints/
 wandb/
 .pytest_cache/
+**/node_modules/
+**/.next/
+.agents/
+

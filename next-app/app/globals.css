@@ -1,0 +1,261 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #FFFFFF;
+  --fg: #000000;
+  --fg-2: color-mix(in srgb, var(--fg) 62%, transparent);
+  --fg-3: color-mix(in srgb, var(--fg) 50%, transparent);
+  --line: color-mix(in srgb, var(--fg) 10%, transparent);
+  --line-strong: color-mix(in srgb, var(--fg) 24%, transparent);
+  --fill-1: color-mix(in srgb, var(--fg) 4%, transparent);
+  --fill-2: color-mix(in srgb, var(--fg) 8%, transparent);
+
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 420ms;
+  --dur-draw: 900ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="dark"],
+.dark {
+  --bg: #000000;
+  --fg: #FFFFFF;
+  --fg-2: color-mix(in srgb, var(--fg) 66%, transparent);
+  --fg-3: color-mix(in srgb, var(--fg) 50%, transparent);
+  --line: color-mix(in srgb, var(--fg) 14%, transparent);
+  --line-strong: color-mix(in srgb, var(--fg) 28%, transparent);
+  --fill-1: color-mix(in srgb, var(--fg) 6%, transparent);
+  --fill-2: color-mix(in srgb, var(--fg) 11%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #000000;
+    --fg: #FFFFFF;
+    --fg-2: color-mix(in srgb, var(--fg) 66%, transparent);
+    --fg-3: color-mix(in srgb, var(--fg) 50%, transparent);
+    --line: color-mix(in srgb, var(--fg) 14%, transparent);
+    --line-strong: color-mix(in srgb, var(--fg) 28%, transparent);
+    --fill-1: color-mix(in srgb, var(--fg) 6%, transparent);
+    --fill-2: color-mix(in srgb, var(--fg) 11%, transparent);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  font-weight: 400;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Strict focus visible ring */
+:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+/* Hide scrollbar for clean tool list scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Indeterminate 1px line along top edge of Response region */
+@keyframes mara-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(50%); }
+  100% { transform: translateX(200%); }
+}
+
+.running-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  overflow: hidden;
+  background-color: var(--line);
+}
+
+.running-line::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 1px;
+  width: 40%;
+  background-color: var(--fg);
+  animation: mara-indeterminate 1.2s infinite var(--ease);
+}
+
+/* Flash inverse row animation */
+@keyframes mara-flash {
+  0% {
+    background-color: var(--fg);
+    color: var(--bg);
+  }
+  75% {
+    background-color: var(--fg);
+    color: var(--bg);
+  }
+  100% {
+    background-color: transparent;
+    color: var(--fg);
+  }
+}
+
+.animate-flash {
+  animation: mara-flash 800ms var(--ease) forwards;
+}
+
+/* Fan rotation */
+@keyframes fan-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fan-running {
+  animation: fan-spin 1.2s linear infinite;
+  transform-origin: 150px 50px;
+}
+
+/* Floor plan draw-in animations */
+@keyframes draw-wall {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fade-in-plan {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.draw-exterior {
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+  animation: draw-wall var(--dur-draw) var(--ease) forwards;
+}
+
+.draw-interior {
+  stroke-dasharray: 800;
+  stroke-dashoffset: 800;
+  animation: draw-wall 600ms var(--ease) 300ms forwards;
+}
+
+.fade-openings {
+  opacity: 0;
+  animation: fade-in-plan 200ms var(--ease) 700ms forwards;
+}
+
+.fade-furniture {
+  opacity: 0;
+  animation: fade-in-plan 300ms var(--ease) 900ms forwards;
+}
+
+/* Ping ring expansion animation */
+@keyframes ping-ring-anim {
+  0% {
+    r: 6px;
+    opacity: 0.5;
+  }
+  100% {
+    r: 26px;
+    opacity: 0;
+  }
+}
+
+.ping-ring {
+  animation: ping-ring-anim 600ms var(--ease) forwards;
+}
+
+/* Order badge pop animation */
+@keyframes badge-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  11% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  89% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.badge-animated {
+  animation: badge-pop 1800ms var(--ease) forwards;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .running-line::after {
+    animation: none;
+    width: 100%;
+  }
+  .animate-flash {
+    animation: none;
+    background-color: var(--fg);
+    color: var(--bg);
+  }
+  .fan-running {
+    animation: none !important;
+  }
+  .draw-exterior,
+  .draw-interior {
+    stroke-dashoffset: 0 !important;
+    animation: none !important;
+  }
+  .fade-openings,
+  .fade-furniture {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+  .ping-ring {
+    display: none !important;
+  }
+  .badge-animated {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: scale(1) !important;
+  }
+}
